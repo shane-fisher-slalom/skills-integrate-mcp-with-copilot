@@ -4,6 +4,86 @@ document.addEventListener("DOMContentLoaded", () => {
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
 
+  // Initialize map
+  let map = null;
+  let markers = {};
+  let selectedActivity = null;
+
+  function initMap() {
+    // Create map centered on Mergington, MA
+    map = L.map("map").setView([42.3601, -71.0589], 14);
+
+    // Add OpenStreetMap tiles
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+    }).addTo(map);
+  }
+
+  function addMarkersToMap(activities) {
+    // Clear existing markers
+    Object.values(markers).forEach((marker) => map.removeLayer(marker));
+    markers = {};
+
+    // Add marker for each activity
+    Object.entries(activities).forEach(([name, details]) => {
+      if (details.location && details.location.lat && details.location.lng) {
+        const marker = L.marker([details.location.lat, details.location.lng])
+          .addTo(map);
+
+        const spotsLeft = details.max_participants - details.participants.length;
+
+        // Create popup content
+        const popupContent = `
+          <div class="map-popup">
+            <h4>${name}</h4>
+            <p><strong>Location:</strong> ${details.location.room}</p>
+            <p><strong>Address:</strong> ${details.location.address}</p>
+            <p><strong>Schedule:</strong> ${details.schedule}</p>
+            <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+            <p class="description">${details.description}</p>
+          </div>
+        `;
+
+        marker.bindPopup(popupContent);
+
+        // Store marker reference
+        markers[name] = marker;
+
+        // Click handler to select activity
+        marker.on("click", () => {
+          selectedActivity = name;
+          highlightActivity(name);
+        });
+      }
+    });
+  }
+
+  function highlightActivity(activityName) {
+    // Remove previous highlights
+    document.querySelectorAll(".activity-card").forEach((card) => {
+      card.classList.remove("selected");
+    });
+
+    // Highlight the selected activity card
+    const cards = document.querySelectorAll(".activity-card");
+    cards.forEach((card) => {
+      const cardTitle = card.querySelector("h4").textContent;
+      if (cardTitle === activityName) {
+        card.classList.add("selected");
+        card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+
+    // Pan map to marker and open popup
+    if (markers[activityName]) {
+      const marker = markers[activityName];
+      map.setView(marker.getLatLng(), 16);
+      marker.openPopup();
+    }
+  }
+
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
@@ -20,6 +100,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const spotsLeft =
           details.max_participants - details.participants.length;
+
+        // Create location HTML
+        const locationHTML = details.location
+          ? `<p><strong>Location:</strong> ${details.location.room}<br>
+             <span class="address">${details.location.address}</span></p>`
+          : "";
 
         // Create participants HTML with delete icons instead of bullet points
         const participantsHTML =
@@ -41,11 +127,20 @@ document.addEventListener("DOMContentLoaded", () => {
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
+          ${locationHTML}
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
           <div class="participants-container">
             ${participantsHTML}
           </div>
         `;
+
+        // Click handler to select activity and show on map
+        activityCard.addEventListener("click", (e) => {
+          // Don't trigger if clicking delete button
+          if (!e.target.classList.contains("delete-btn")) {
+            highlightActivity(name);
+          }
+        });
 
         activitiesList.appendChild(activityCard);
 
@@ -60,6 +155,9 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".delete-btn").forEach((button) => {
         button.addEventListener("click", handleUnregister);
       });
+
+      // Add markers to map
+      addMarkersToMap(activities);
     } catch (error) {
       activitiesList.innerHTML =
         "<p>Failed to load activities. Please try again later.</p>";
@@ -156,5 +254,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Initialize app
+  initMap();
   fetchActivities();
 });
